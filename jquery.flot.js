@@ -116,7 +116,10 @@ Licensed under the MIT license.
 	Canvas.prototype.resize = function(width, height) {
 
 		if (width <= 0 || height <= 0) {
-			throw new Error("Invalid dimensions for plot, width = " + width + ", height = " + height);
+                        // **TP CHANGES** Don't just die... the chart might resize later.
+                        console.log("Invalid dimensions for plot, width = " + width + ", height = " + height);
+                        width = 1;
+                        height = 1;
 		}
 
 		var element = this.element,
@@ -149,8 +152,8 @@ Licensed under the MIT license.
 		context.restore();
 		context.save();
 
-		// Scale the coordinate space to match the display density; so even though we
-		// may have twice as many pixels, we still want lines and other drawing to
+	    // Scale the coordinate space to match the display density; so even though we
+	    // may have twice as many pixels, we still want lines and other drawing to
 		// appear at the same size; the extra pixels will just make them crisper.
 
 		context.scale(pixelRatio, pixelRatio);
@@ -441,12 +444,12 @@ Licensed under the MIT license.
                     show: true,
                     noColumns: 1, // number of colums in legend table
                     labelFormatter: null, // fn: string -> string
-                    labelBoxBorderColor: "#ccc", // border color for the little label boxes
+                    labelBoxBorderColor: null, // border color for the little label boxes
                     container: null, // container (as jQuery object) to put legend in, null means default on top of graph
                     position: "ne", // position of default legend container within plot
                     margin: 5, // distance from grid edge to default legend container within plot
                     backgroundColor: null, // null means auto-detect
-                    backgroundOpacity: 0.85, // set to 0 to avoid background
+                    backgroundOpacity: 0.65, // set to 0 to avoid background
                     sorted: null    // default to no legend sorting
                 },
                 xaxis: {
@@ -520,7 +523,9 @@ Licensed under the MIT license.
                     margin: 0, // distance from the canvas edge to the grid
                     labelMargin: 5, // in pixels
                     axisMargin: 8, // in pixels
-                    borderWidth: 2, // in pixels
+                    axisOffset: { top: 0, left: 0, bottom: 0, right: 0 }, // top/left/bottom/right object
+                    borderWidth: { top: 2, left: 2, bottom: 2, right: 2 }, // in pixels
+                    borderOffset: { top: 0, left: 0, bottom: 0, right: 0 }, // top/left/bottom/right object
                     minBorderMargin: null, // in pixels, null means taken from points radius
                     markings: null, // array of ranges or fn: axes -> array of ranges
                     markingsColor: "#f4f4f4",
@@ -656,6 +661,12 @@ Licensed under the MIT license.
                 options.grid.borderColor = options.grid.color;
             if (options.grid.tickColor == null)
                 options.grid.tickColor = $.color.parse(options.grid.color).scale('a', 0.22).toString();
+
+            if(typeof options.grid.borderWidth === "object" && typeof options.grid.borderOffset !== "object")
+            {
+            	var borderOffset = options.grid.borderOffset;
+            	options.grid.borderOffset = { top: borderOffset, left: borderOffset, right: borderOffset, bottom: borderOffset };
+            }
 
             // Fill in defaults for axis options, including any unspecified
             // font-spec fields, if a font-spec was provided.
@@ -1207,7 +1218,8 @@ Licensed under the MIT license.
 
         function bindEvents() {
             // bind events
-            if (options.grid.hoverable) {
+            if (options.grid.hoverable)
+            {
                 eventHolder.mousemove(onMouseMove);
 
                 // Use bind, rather than .mouseleave, because we officially
@@ -1319,13 +1331,16 @@ Licensed under the MIT license.
             if ($.inArray(axis, samePosition) == samePosition.length - 1)
                 axisMargin = 0; // outermost
 
+            // determine innermost separately of tickLength as we use it elsewhere
+            var sameDirection = $.grep(all, function (a) {
+                return a && a.reserveSpace;
+            });
+
+            innermost = $.inArray(axis, sameDirection) == 0;
+
             // determine tick length - if we're innermost, we can use "full"
             if (tickLength == null) {
-                var sameDirection = $.grep(all, function (a) {
-                    return a && a.reserveSpace;
-                });
 
-                innermost = $.inArray(axis, sameDirection) == 0;
                 if (innermost)
                     tickLength = "full";
                 else
@@ -1341,10 +1356,10 @@ Licensed under the MIT license.
 
                 if (pos == "bottom") {
                     plotOffset.bottom += lh + axisMargin;
-                    axis.box = { top: surface.height - plotOffset.bottom, height: lh };
+                    axis.box = { top: surface.height - plotOffset.bottom + options.grid.borderOffset.bottom + options.grid.axisOffset.bottom, height: lh };
                 }
                 else {
-                    axis.box = { top: plotOffset.top + axisMargin, height: lh };
+                    axis.box = { top: plotOffset.top - options.grid.borderOffset.top - options.grid.axisOffset.top + axisMargin, height: lh };
                     plotOffset.top += lh + axisMargin;
                 }
             }
@@ -1352,12 +1367,12 @@ Licensed under the MIT license.
                 lw += padding;
 
                 if (pos == "left") {
-                    axis.box = { left: plotOffset.left + axisMargin, width: lw };
+                    axis.box = { left: plotOffset.left - options.grid.borderOffset.left - options.grid.axisOffset.left + axisMargin, width: lw };
                     plotOffset.left += lw + axisMargin;
                 }
                 else {
                     plotOffset.right += lw + axisMargin;
-                    axis.box = { left: surface.width - plotOffset.right, width: lw };
+                    axis.box = { left: surface.width - plotOffset.right + options.grid.borderOffset.right + options.grid.axisOffset.right, width: lw };
                 }
             }
 
@@ -1426,14 +1441,15 @@ Licensed under the MIT license.
 
             executeHooks(hooks.processOffset, [plotOffset]);
 
-            // If the grid is visible, add its border width to the offset
-
+            // If the grid is visible, add its border width and offsets to the offset
             for (var a in plotOffset) {
                 if(typeof(options.grid.borderWidth) == "object") {
-                    plotOffset[a] += showGrid ? options.grid.borderWidth[a] : 0;
+                    plotOffset[a] += showGrid ? Math.ceil(options.grid.borderWidth[a]) : 0;
+                    plotOffset[a] += showGrid ? Math.ceil(options.grid.borderOffset[a]) : 0;
                 }
                 else {
                     plotOffset[a] += showGrid ? options.grid.borderWidth : 0;
+                    plotOffset[a] += showGrid ? options.grid.borderOffset : 0;
                 }
             }
 
@@ -1873,14 +1889,14 @@ Licensed under the MIT license.
 
                 // find the edges
                 if (axis.direction == "x") {
-                    x = 0;
+                    x = 0 + plotOffset.left;
                     if (t == "full")
                         y = (axis.position == "top" ? 0 : plotHeight);
                     else
                         y = box.top - plotOffset.top + (axis.position == "top" ? box.height : 0);
                 }
                 else {
-                    y = 0;
+                    y = 0 + plotOffset.bottom;
                     if (t == "full")
                         x = (axis.position == "left" ? 0 : plotWidth);
                     else
@@ -1893,9 +1909,31 @@ Licensed under the MIT license.
                     ctx.beginPath();
                     xoff = yoff = 0;
                     if (axis.direction == "x")
+                    {
                         xoff = plotWidth + 1;
+                        x = x + plotOffset.left;
+                        if(axis.position === "bottom")
+                        {
+	                        y = y + options.grid.axisOffset.bottom;
+                        }
+                        else
+                        {
+ 	                        y = y - options.grid.axisOffset.top;                       	
+                        }
+                    }
                     else
+                    {
                         yoff = plotHeight + 1;
+                        y = y - plotOffset.bottom;
+                        if(axis.position === "right")
+                        {
+	                        x = x + options.grid.axisOffset.right;
+                        }
+                        else
+                        {
+ 	                        x = x - options.grid.axisOffset.left;                       	
+                        }
+                    }
 
                     if (ctx.lineWidth == 1) {
                         if (axis.direction == "x") {
@@ -1962,7 +2000,11 @@ Licensed under the MIT license.
                 // If either borderWidth or borderColor is an object, then draw the border
                 // line by line instead of as one rectangle
                 bc = options.grid.borderColor;
-                if(typeof bw == "object" || typeof bc == "object") {
+
+                // TP Micah added border offset ...
+                bo = options.grid.borderOffset;
+
+                if(typeof bw == "object" || typeof bc == "object" || typeof bo == "object") {
                     if (typeof bw !== "object") {
                         bw = {top: bw, right: bw, bottom: bw, left: bw};
                     }
@@ -1970,12 +2012,16 @@ Licensed under the MIT license.
                         bc = {top: bc, right: bc, bottom: bc, left: bc};
                     }
 
+                    if(typeof bo !== "object") {
+                    	bo = {top: bo, right: bo, bottom: bo, left: bo};
+                    }
+
                     if (bw.top > 0) {
                         ctx.strokeStyle = bc.top;
                         ctx.lineWidth = bw.top;
                         ctx.beginPath();
-                        ctx.moveTo(0 - bw.left, 0 - bw.top/2);
-                        ctx.lineTo(plotWidth, 0 - bw.top/2);
+                        ctx.moveTo(0 - bw.left - bo.left, 0 - bw.top/2 - bw.top);
+                        ctx.lineTo(plotWidth, 0 - bw.top/2 - bw.top);
                         ctx.stroke();
                     }
 
@@ -1983,8 +2029,8 @@ Licensed under the MIT license.
                         ctx.strokeStyle = bc.right;
                         ctx.lineWidth = bw.right;
                         ctx.beginPath();
-                        ctx.moveTo(plotWidth + bw.right / 2, 0 - bw.top);
-                        ctx.lineTo(plotWidth + bw.right / 2, plotHeight);
+                        ctx.moveTo(plotWidth + bw.right / 2 + bo.right, 0 - bw.top - bo.top);
+                        ctx.lineTo(plotWidth + bw.right / 2 + bo.right, plotHeight);
                         ctx.stroke();
                     }
 
@@ -1992,8 +2038,8 @@ Licensed under the MIT license.
                         ctx.strokeStyle = bc.bottom;
                         ctx.lineWidth = bw.bottom;
                         ctx.beginPath();
-                        ctx.moveTo(plotWidth + bw.right, plotHeight + bw.bottom / 2);
-                        ctx.lineTo(0, plotHeight + bw.bottom / 2);
+                        ctx.moveTo(plotWidth + bw.right + bo.right, plotHeight + bw.bottom / 2 + bo.bottom);
+                        ctx.lineTo(0 - bo.left, plotHeight + bw.bottom / 2 + bo.bottom);
                         ctx.stroke();
                     }
 
@@ -2001,8 +2047,8 @@ Licensed under the MIT license.
                         ctx.strokeStyle = bc.left;
                         ctx.lineWidth = bw.left;
                         ctx.beginPath();
-                        ctx.moveTo(0 - bw.left/2, plotHeight + bw.bottom);
-                        ctx.lineTo(0- bw.left/2, 0);
+                        ctx.moveTo(0 - bw.left/2 - bo.left, plotHeight + bw.bottom + bo.bottom);
+                        ctx.lineTo(0- bw.left/2 - bo.left, 0);
                         ctx.stroke();
                     }
                 }
@@ -2070,7 +2116,8 @@ Licensed under the MIT license.
                 drawSeriesPoints(series);
         }
 
-        function drawSeriesLines(series) {
+        function drawSeriesLines(series)
+        {
             function plotLine(datapoints, xoffset, yoffset, axisx, axisy) {
                 var points = datapoints.points,
                     ps = datapoints.pointsize,
@@ -2312,7 +2359,7 @@ Licensed under the MIT license.
             }
 
             ctx.lineWidth = lw;
-            ctx.strokeStyle = series.color;
+            ctx.strokeStyle = series.lineColor || series.color; // **TP CHANGES**: Support a line color different than series color
             var fillStyle = getFillStyle(series.lines, series.color, 0, plotHeight);
             if (fillStyle) {
                 ctx.fillStyle = fillStyle;
@@ -2320,7 +2367,10 @@ Licensed under the MIT license.
             }
 
             if (lw > 0)
-                plotLine(series.datapoints, 0, 0, series.xaxis, series.yaxis);
+            {
+            	// offset vertically by half of line width, so bottom of line aligns cleanly with bars or other elements when there is a border offset
+                plotLine(series.datapoints, 0, -1 * Math.floor(lw / 2), series.xaxis, series.yaxis);
+            }
             ctx.restore();
         }
 
@@ -2688,7 +2738,9 @@ Licensed under the MIT license.
                 if (axisy.options.inverseTransform)
                     maxy = Number.MAX_VALUE;
 
-                if (s.lines.show || s.points.show) {
+                // ENABLED DASHES ...
+                if (s.lines.show || s.points.show || s.dashes.show)
+                {
                     for (j = 0; j < points.length; j += ps) {
                         var x = points[j], y = points[j + 1];
                         if (x == null)
@@ -2749,7 +2801,8 @@ Licensed under the MIT license.
             return null;
         }
 
-        function onMouseMove(e) {
+        function onMouseMove(e)
+        {
             if (options.grid.hoverable)
                 triggerClickHoverEvent("plothover", e,
                                        function (s) { return s["hoverable"] != false; });
@@ -2761,7 +2814,8 @@ Licensed under the MIT license.
                                        function (s) { return false; });
         }
 
-        function onClick(e) {
+        function onClick(e)
+        {
             triggerClickHoverEvent("plotclick", e,
                                    function (s) { return s["clickable"] != false; });
         }
@@ -2954,10 +3008,21 @@ Licensed under the MIT license.
     // Add the plot function to the top level of the jQuery object
 
     $.plot = function(placeholder, data, options) {
-        //var t0 = new Date();
-        var plot = new Plot($(placeholder), data, options, $.plot.plugins);
-        //(window.console ? console.log : alert)("time used (msecs): " + ((new Date()).getTime() - t0.getTime()));
-        return plot;
+        var $placeholder = $(placeholder);
+
+        if($placeholder.length < 1)
+        {
+            console.warn("$.plot called without any matching elements, skipping to prevent crash");
+            return;
+        }
+
+        if($placeholder.length > 1)
+        {
+            console.warn("$.plot called with multiple matching elements... only using the first one");
+            $placeholdrs = $placeholder.first();
+        }
+
+        return new Plot($placeholder, data, options, $.plot.plugins);
     };
 
     $.plot.version = "0.8.0";
