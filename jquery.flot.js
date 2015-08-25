@@ -1996,7 +1996,17 @@ Licensed under the MIT license.
                     }
                     else {
                         // fill area
-                        ctx.fillStyle = m.color || options.grid.markingsColor;
+                        var colorSpec;
+                        if (m.color)
+                        {
+                        	colorSpec = getColorOrGradient(m.color, plotHeight, 0, "rgba(255, 255, 255, 0)");
+                        }
+                        else if (options.grid.markingsColor)
+                        {
+                        	colorSpec = getColorOrGradient(options.grid.markingsColor, plotHeight, 0, "rgba(255, 255, 255, 0)");
+                        }
+
+                        ctx.fillStyle = colorSpec;
                         ctx.fillRect(xrange.from, yrange.to,
                                      xrange.to - xrange.from,
                                      yrange.from - yrange.to);
