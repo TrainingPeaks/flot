@@ -1931,7 +1931,7 @@ Licensed under the MIT license.
         }
 
         function drawGrid() {
-            var i, axes, bw, bc;
+            var i, axes, bw, bc, bo;
 
             ctx.save();
             ctx.translate(plotOffset.left, plotOffset.top);
